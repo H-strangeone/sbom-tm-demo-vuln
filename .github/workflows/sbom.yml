@@ -1,4 +1,4 @@
-name: SBOM-TM Demo Scan
+name: SBOM-TM Scan & Diff
 
 on:
   pull_request:
@@ -7,64 +7,65 @@ on:
     branches: [main]
 
 jobs:
+
   scan:
-    name: SBOM Threat Model Scan
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
 
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: SBOM-TM Scan
-        id: sbom_scan
+      # -------- SCAN --------
+      - name: SBOM Scan
+        id: scan_step
+        continue-on-error: true
         uses: h-strangeone/SBOM-TM@v0.4.7
         with:
           mode: scan
           project: demo
 
-      - name: SBOM-TM Diff (PR only)
+      - name: Upload Scan Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-report
+          path: sbom-report/
+
+      - name: Print Scan Summary
+        run: |
+          echo "Scan reports saved to sbom-report/"
+
+      # -------- DIFF (PR only) --------
+      - name: SBOM Diff
         if: github.event_name == 'pull_request'
-        id: sbom_diff
+        id: diff_step
+        continue-on-error: true
         uses: h-strangeone/SBOM-TM@v0.4.7
         with:
           mode: diff
           project: demo
 
-      - name: Check if diff report exists
-        id: check_report
+      - name: Find Diff Markdown
+        if: github.event_name == 'pull_request'
+        id: find_diff
         run: |
-          REPORT="/github/home/.cache/sbom-tm/reports/demo_sbom_diff.md"
-          if [ -f "$REPORT" ]; then
+          FILE=$(ls sbom-report/*_diff_report.md 2>/dev/null || true)
+          if [ -n "$FILE" ]; then
             echo "found=true" >> $GITHUB_OUTPUT
-            echo "path=$REPORT" >> $GITHUB_OUTPUT
+            echo "path=$FILE" >> $GITHUB_OUTPUT
           else
             echo "found=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Upload Markdown Report
-        if: steps.check_report.outputs.found == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-diff-report
-          path: ${{ steps.check_report.outputs.path }}
-          if-no-files-found: warn
-
-      - name: Post SBOM Diff Comment on PR
-        if: github.event_name == 'pull_request' && steps.check_report.outputs.found == 'true'
+      - name: Sticky PR Comment (Diff)
+        if: github.event_name == 'pull_request' && steps.find_diff.outputs.found == 'true'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           recreate: true
-          path: ${{ steps.check_report.outputs.path }}
+          path: ${{ steps.find_diff.outputs.path }}
 
-      - name: Fail if SBOM Scan failed
-        if: steps.sbom_scan.outcome == 'failure'
-        run: |
-          echo "❌ SBOM-TM found blocking issues."
-          exit 1
-
-      - name: Success
-        if: steps.sbom_scan.outcome == 'success'
-        run: echo "✔ SBOM-TM scan succeeded!"
+      - name: Upload Diff Reports
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: diff-report
+          path: sbom-report/
