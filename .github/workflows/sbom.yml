@@ -12,6 +12,7 @@ jobs:
     name: SBOM Threat Model Scan
 
     steps:
+      # Checkout with full history for diff
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -27,6 +28,7 @@ jobs:
           mode: scan
           project: demo
 
+      # Save scan report directory
       - name: Upload Scan Report
         uses: actions/upload-artifact@v4
         with:
@@ -76,78 +78,7 @@ jobs:
           path: ${{ steps.find_md.outputs.path }}
 
       # ===========================
-      #     OPEN SECURITY ISSUE
-      # ===========================
-      - name: Open Security Issue
-        uses: actions/github-script@v7
-        id: issue
-        continue-on-error: true
-        with:
-          script: |
-            const fs = require("fs");
-            const path = "sbom-report/demo_scan_report.json";
-
-            if (!fs.existsSync(path)) {
-              console.log("No scan report found.");
-              return;
-            }
-
-            const data = JSON.parse(fs.readFileSync(path));
-            const vulns = data.vulnerabilities || [];
-
-            const highs = vulns.filter(v => (v.Severity || v.severity || "").toLowerCase() === "high");
-            const crits = vulns.filter(v => (v.Severity || v.severity || "").toLowerCase() === "critical");
-
-            if (highs.length + crits.length === 0) {
-              console.log("No high/critical vulns.");
-              return;
-            }
-
-            const title = `🚨 SBOM-TM Security Alert — ${highs.length} High, ${crits.length} Critical`;
-
-            // Check for an existing issue
-            const { data: issues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              labels: "security"
-            });
-
-            let existing = issues.find(i => i.title.startsWith("🚨 SBOM-TM Security Alert"));
-
-            let body = `## High/Critical Vulnerabilities Detected
-  
-### Summary
-- **High:** ${highs.length}
-- **Critical:** ${crits.length}
-
-### Vulnerabilities
-${highs.concat(crits).map(v => `- **${v.VulnerabilityID}** in *${v.PkgName}*`).join("\n")}
-
-### Reports
-- Check GitHub Actions → Artifacts → sbom-scan-report
-`;
-
-            if (existing) {
-              console.log("Updating existing issue:", existing.number);
-              await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existing.number,
-                body
-              });
-            } else {
-              console.log("Creating new issue");
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-                labels: ["security"]
-              });
-            }
-
-      # ===========================
-      #     PASS / FAIL STATUS
+      #      PASS / FAIL STATUS
       # ===========================
       - name: Fail if scan failed
         if: steps.sbom_scan.outcome == 'failure'
