@@ -19,7 +19,7 @@ jobs:
       - name: SBOM Scan
         id: scan_step
         continue-on-error: true
-        uses: h-strangeone/SBOM-TM@v0.4.7
+        uses: h-strangeone/SBOM-TM@v0.4.71
         with:
           mode: scan
           project: demo
@@ -39,7 +39,7 @@ jobs:
         if: github.event_name == 'pull_request'
         id: diff_step
         continue-on-error: true
-        uses: h-strangeone/SBOM-TM@v0.4.7
+        uses: h-strangeone/SBOM-TM@v0.4.71
         with:
           mode: diff
           project: demo
@@ -69,3 +69,4 @@ jobs:
         with:
           name: diff-report
           path: sbom-report/
+
