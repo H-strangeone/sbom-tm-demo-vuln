@@ -7,14 +7,14 @@ on:
     branches: [main]
 
 jobs:
-
   sbom:
     runs-on: ubuntu-latest
 
     steps:
       # Checkout
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
 
       # -----------------------------------------------------
       # 1. RUN SCAN
@@ -28,7 +28,8 @@ jobs:
           project: demo
 
       # Upload scan artifacts
-      - uses: actions/upload-artifact@v4
+      - name: Upload Scan Report
+        uses: actions/upload-artifact@v4
         with:
           name: sbom-scan-report
           path: sbom-report/
@@ -47,15 +48,16 @@ jobs:
           project: demo
 
       # Upload diff artifacts
-      - uses: actions/upload-artifact@v4
+      - name: Upload Diff Report
         if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
         with:
           name: sbom-diff-report
           path: sbom-report/
           if-no-files-found: warn
 
       # -----------------------------------------------------
-      # 3. Sticky PR Comment (PR only)
+      # 3. Sticky PR Comment
       # -----------------------------------------------------
       - name: Find Diff Markdown
         if: github.event_name == 'pull_request'
@@ -77,7 +79,7 @@ jobs:
           path: ${{ steps.find_md.outputs.path }}
 
       # -----------------------------------------------------
-      # 4. Dependabot-style JOB SUMMARY TABLE
+      # 4. Dependabot-style SUMMARY TABLE
       # -----------------------------------------------------
       - name: Job Summary
         run: |
@@ -93,24 +95,26 @@ jobs:
           echo "- Diff: sbom-diff-report" >> $GITHUB_STEP_SUMMARY
 
       # -----------------------------------------------------
-      # 5. Open/Update SECURITY ISSUE on high/critical
+      # 5. Auto-create / update SECURITY ISSUE
       # -----------------------------------------------------
       - name: Open Security Issue
-        id: issue
         uses: actions/github-script@v7
+        id: issue
         with:
           script: |
-            const fs = require('fs');
-            const path = 'sbom-report/demo_scan_report.json';
-            const data = JSON.parse(fs.readFileSync(path));
+            const fs = require("fs");
 
-            // Filter high & critical vulns
-            const highs = data.vulnerabilities.filter(v => 
-              (v.Severity || v.severity || "").toLowerCase() === "high"
-            );
-            const crits = data.vulnerabilities.filter(v => 
-              (v.Severity || v.severity || "").toLowerCase() === "critical"
-            );
+            const path = "sbom-report/demo_scan_report.json";
+            if (!fs.existsSync(path)) {
+              console.log("Scan report not found.");
+              return;
+            }
+
+            const data = JSON.parse(fs.readFileSync(path));
+            const vulns = data.vulnerabilities || [];
+
+            const highs = vulns.filter(v => (v.Severity || v.severity || "").toLowerCase() === "high");
+            const crits = vulns.filter(v => (v.Severity || v.severity || "").toLowerCase() === "critical");
 
             if (highs.length === 0 && crits.length === 0) {
               console.log("No high/critical vulnerabilities.");
@@ -119,14 +123,13 @@ jobs:
 
             const title = "🚨 SBOM-TM Security Alert — High/Critical Vulnerabilities";
 
-            // Find existing issue
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
               labels: "security"
             });
 
-            let existing = issues.find(i => i.title === title);
+            const existing = issues.find(i => i.title === title);
 
             let body = `## SBOM-TM Security Alert
 Detected **${highs.length} high** and **${crits.length} critical** vulnerabilities.
@@ -135,7 +138,7 @@ Detected **${highs.length} high** and **${crits.length} critical** vulnerabiliti
 ${highs.concat(crits).map(v => `- **${v.VulnerabilityID}** in *${v.PkgName}*`).join("\n")}
 
 ### Reports
-Artifacts: check GitHub Actions run for detailed JSON/HTML reports.
+Check GitHub Actions artifacts for full JSON/HTML.
 `;
 
             if (existing) {
@@ -166,11 +169,10 @@ Artifacts: check GitHub Actions run for detailed JSON/HTML reports.
           secure: true
           username: ${{ secrets.SMTP_USER }}
           password: ${{ secrets.SMTP_PASS }}
-          subject: "SBOM-TM Security Report for ${{ github.repository }}"
           to: ${{ secrets.ALERT_EMAIL }}
           from: "SBOM-TM Bot <${{ secrets.SMTP_USER }}>"
+          subject: "SBOM-TM Security Report for ${{ github.repository }}"
           html_body: |
             <h2>SBOM-TM Security Report</h2>
-            <p>Project: <b>${{ github.repository }}</b></p>
-            <p>See attachments for full scan and diff reports.</p>
-          attachments: sbom-report/*
+            <p>Repository: <b>${{ github.repository }}</b></p>
+            <p>Scan and diff reports have been generated.</p>
