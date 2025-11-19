@@ -82,13 +82,18 @@ jobs:
       # 4. Dependabot-style SUMMARY TABLE
       # -----------------------------------------------------
       - name: Job Summary
+        if: always()
         run: |
           echo "## SBOM-TM Summary" >> $GITHUB_STEP_SUMMARY
           echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Components | $(jq '.component_count' sbom-report/demo_scan_report.json) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Vulnerabilities | $(jq '.vulnerability_count' sbom-report/demo_scan_report.json) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Threats | $(jq '.threat_count' sbom-report/demo_scan_report.json) |" >> $GITHUB_STEP_SUMMARY
+          if [ -f "sbom-report/demo_scan_report.json" ]; then
+            echo "| Components | $(jq '.component_count' sbom-report/demo_scan_report.json) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Vulnerabilities | $(jq '.vulnerability_count' sbom-report/demo_scan_report.json) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Threats | $(jq '.threat_count' sbom-report/demo_scan_report.json) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Scan Report | Not Found |" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Reports" >> $GITHUB_STEP_SUMMARY
           echo "- Scan: sbom-scan-report" >> $GITHUB_STEP_SUMMARY
@@ -103,26 +108,31 @@ jobs:
         with:
           script: |
             const fs = require("fs");
-
             const path = "sbom-report/demo_scan_report.json";
+
             if (!fs.existsSync(path)) {
-              console.log("Scan report not found.");
+              console.log("No scan report found — skipping issue creation.");
               return;
             }
 
             const data = JSON.parse(fs.readFileSync(path));
             const vulns = data.vulnerabilities || [];
 
-            const highs = vulns.filter(v => (v.Severity || v.severity || "").toLowerCase() === "high");
-            const crits = vulns.filter(v => (v.Severity || v.severity || "").toLowerCase() === "critical");
+            const highs = vulns.filter(v =>
+              (v.Severity || v.severity || "").toLowerCase() === "high"
+            );
+            const crits = vulns.filter(v =>
+              (v.Severity || v.severity || "").toLowerCase() === "critical"
+            );
 
             if (highs.length === 0 && crits.length === 0) {
-              console.log("No high/critical vulnerabilities.");
+              console.log("No high/critical vulnerabilities found.");
               return;
             }
 
             const title = "🚨 SBOM-TM Security Alert — High/Critical Vulnerabilities";
 
+            // Check if issue already exists
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -131,14 +141,18 @@ jobs:
 
             const existing = issues.find(i => i.title === title);
 
-            let body = `## SBOM-TM Security Alert
+            const format = v =>
+              `- **${v.VulnerabilityID}** in *${v.PkgName}*`;
+
+            const body = `
+## SBOM-TM Security Alert
 Detected **${highs.length} high** and **${crits.length} critical** vulnerabilities.
 
 ### Vulnerabilities
-${highs.concat(crits).map(v => `- **${v.VulnerabilityID}** in *${v.PkgName}*`).join("\n")}
+${highs.concat(crits).map(format).join("\n")}
 
 ### Reports
-Check GitHub Actions artifacts for full JSON/HTML.
+See GitHub Actions → Artifacts for JSON and HTML reports.
 `;
 
             if (existing) {
@@ -158,21 +172,4 @@ Check GitHub Actions artifacts for full JSON/HTML.
               });
             }
 
-      # -----------------------------------------------------
-      # 6. SEND EMAIL LIKE DEPENDABOT
-      # -----------------------------------------------------
-      - name: Send Email Notification
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          secure: true
-          username: ${{ secrets.SMTP_USER }}
-          password: ${{ secrets.SMTP_PASS }}
-          to: ${{ secrets.ALERT_EMAIL }}
-          from: "SBOM-TM Bot <${{ secrets.SMTP_USER }}>"
-          subject: "SBOM-TM Security Report for ${{ github.repository }}"
-          html_body: |
-            <h2>SBOM-TM Security Report</h2>
-            <p>Repository: <b>${{ github.repository }}</b></p>
-            <p>Scan and diff reports have been generated.</p>
+
