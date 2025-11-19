@@ -23,7 +23,7 @@ jobs:
       # ===========================
       - name: SBOM-TM Scan
         id: sbom_scan
-        uses: h-strangeone/SBOM-TM@v0.4.71
+        uses: h-strangeone/SBOM-TM@v0.4.72
         with:
           mode: scan
           project: demo
@@ -42,7 +42,7 @@ jobs:
       - name: SBOM-TM Diff
         id: sbom_diff
         if: github.event_name == 'pull_request'
-        uses: h-strangeone/SBOM-TM@v0.4.71
+        uses: h-strangeone/SBOM-TM@v0.4.72
         with:
           mode: diff
           project: demo
@@ -89,4 +89,5 @@ jobs:
       - name: Success
         if: steps.sbom_scan.outcome == 'success'
         run: echo "✔ SBOM-TM scan succeeded!"
+
 
