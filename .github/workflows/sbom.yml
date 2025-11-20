@@ -23,7 +23,7 @@ jobs:
       # ===========================
       - name: SBOM-TM Scan
         id: sbom_scan
-        uses: h-strangeone/SBOM-TM@v0.4.73
+        uses: h-strangeone/SBOM-TM@v0.4.74
         with:
           mode: scan
           project: demo
@@ -42,7 +42,7 @@ jobs:
       - name: SBOM-TM Diff
         id: sbom_diff
         if: github.event_name == 'pull_request'
-        uses: h-strangeone/SBOM-TM@v0.4.73
+        uses: h-strangeone/SBOM-TM@v0.4.74
         with:
           mode: diff
           project: demo
@@ -59,17 +59,22 @@ jobs:
       #      STICKY PR COMMENT
       # ===========================
       - name: Find Diff Markdown
+        if: github.event_name == 'pull_request'
         id: find_md
         run: |
+          echo "PWD=$(pwd)"
+          echo "--- ls ---"
+          ls -R .
           FILE=$(ls sbom-report/*_sbom_diff.md 2>/dev/null || true)
           if [ -n "$FILE" ]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "path=$FILE" >> "$GITHUB_OUTPUT"
+            echo "Found diff markdown at: $FILE"
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No diff markdown found."
           fi
-
-
+          
       - name: Post Sticky PR Comment
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
@@ -102,6 +107,7 @@ jobs:
       - name: Success
         if: steps.sbom_scan.outcome == 'success'
         run: echo "✔ SBOM-TM scan succeeded!"
+
 
 
 
