@@ -59,7 +59,6 @@ jobs:
       #      STICKY PR COMMENT
       # ===========================
       - name: Find Diff Markdown
-        if: github.event_name == 'pull_request'
         id: find_md
         run: |
           FILE=$(ls sbom-report/*_sbom_diff.md 2>/dev/null || true)
@@ -70,12 +69,26 @@ jobs:
             echo "found=false" >> "$GITHUB_OUTPUT"
           fi
 
+
       - name: Post Sticky PR Comment
-        if: github.event_name == 'pull_request' && steps.find_md.outputs.found == 'true'
+        if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           recreate: true
           path: ${{ steps.find_md.outputs.path }}
+          message: |
+            ## SBOM Diff Report
+            {% if steps.find_md.outputs.found == 'true' %}
+            See attached SBOM diff report   
+            `${{ steps.find_md.outputs.path }}`
+            {% else %}
+            ❗ No SBOM diff report was generated.
+            This may mean:
+            - No vulnerabilities were introduced  
+            - SBOM generation failed  
+            - Diff exited early  
+            {% endif %}
+
 
       # ===========================
       #      PASS / FAIL STATUS
@@ -89,5 +102,6 @@ jobs:
       - name: Success
         if: steps.sbom_scan.outcome == 'success'
         run: echo "✔ SBOM-TM scan succeeded!"
+
 
 
