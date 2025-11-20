@@ -5,6 +5,9 @@ on:
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
+permissions:
+  pull-requests: write
+  contents: read
 
 jobs:
   scan:
@@ -105,4 +108,5 @@ jobs:
       - name: Success
         if: steps.sbom_scan.outcome == 'success'
         run: echo "✔ SBOM-TM scan succeeded!"
+
 
