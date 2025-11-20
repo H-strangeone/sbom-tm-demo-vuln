@@ -93,8 +93,6 @@ jobs:
             - SBOM generation failed  
             - Diff exited early  
             {% endif %}
-
-
       # ===========================
       #      PASS / FAIL STATUS
       # ===========================
@@ -107,5 +105,4 @@ jobs:
       - name: Success
         if: steps.sbom_scan.outcome == 'success'
         run: echo "✔ SBOM-TM scan succeeded!"
-
 
