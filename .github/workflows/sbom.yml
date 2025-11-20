@@ -109,4 +109,3 @@ jobs:
         if: steps.sbom_scan.outcome == 'success'
         run: echo "✔ SBOM-TM scan succeeded!"
 
-
