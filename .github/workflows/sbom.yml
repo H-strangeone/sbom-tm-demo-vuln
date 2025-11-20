@@ -1,4 +1,4 @@
-name: SBOM-TM Demo Scan
+name: SBOM-TM Security Scan
 
 on:
   pull_request:
@@ -8,58 +8,97 @@ on:
 
 jobs:
   scan:
-    name: SBOM Threat Model Scan
     runs-on: ubuntu-latest
+    name: SBOM Threat Model Scan
 
     steps:
-
+      # Checkout with full history for diff
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # ===========================
+      #          SCAN
+      # ===========================
       - name: SBOM-TM Scan
         id: sbom_scan
-        uses: h-strangeone/SBOM-TM@v0.4.7
+        uses: h-strangeone/SBOM-TM@v0.4.74
         with:
           mode: scan
           project: demo
 
-      - name: SBOM-TM Diff (PR only)
-        if: github.event_name == 'pull_request'
+      # Save scan report directory
+      - name: Upload Scan Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-scan-report
+          path: sbom-report/
+          if-no-files-found: warn
+
+      # ===========================
+      #          DIFF (PR ONLY)
+      # ===========================
+      - name: SBOM-TM Diff
         id: sbom_diff
-        uses: h-strangeone/SBOM-TM@v0.4.7
+        if: github.event_name == 'pull_request'
+        uses: h-strangeone/SBOM-TM@v0.4.74
         with:
           mode: diff
           project: demo
 
-      - name: Check if diff report exists
-        id: check_report
-        run: |
-          REPORT="/github/home/.cache/sbom-tm/reports/demo_sbom_diff.md"
-          if [ -f "$REPORT" ]; then
-            echo "found=true" >> $GITHUB_OUTPUT
-            echo "path=$REPORT" >> $GITHUB_OUTPUT
-          else
-            echo "found=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Upload Markdown Report
-        if: steps.check_report.outputs.found == 'true'
+      - name: Upload Diff Report
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: sbom-diff-report
-          path: ${{ steps.check_report.outputs.path }}
+          path: sbom-report/
           if-no-files-found: warn
 
-      - name: Post SBOM Diff Comment on PR
-        if: github.event_name == 'pull_request' && steps.check_report.outputs.found == 'true'
+      # ===========================
+      #      STICKY PR COMMENT
+      # ===========================
+      - name: Find Diff Markdown
+        if: github.event_name == 'pull_request'
+        id: find_md
+        run: |
+          echo "PWD=$(pwd)"
+          echo "--- ls ---"
+          ls -R .
+          FILE=$(ls sbom-report/*_sbom_diff.md 2>/dev/null || true)
+          if [ -n "$FILE" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "path=$FILE" >> "$GITHUB_OUTPUT"
+            echo "Found diff markdown at: $FILE"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No diff markdown found."
+          fi
+          
+      - name: Post Sticky PR Comment
+        if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           recreate: true
-          path: ${{ steps.check_report.outputs.path }}
+          path: ${{ steps.find_md.outputs.path }}
+          message: |
+            ## SBOM Diff Report
+            {% if steps.find_md.outputs.found == 'true' %}
+            See attached SBOM diff report   
+            `${{ steps.find_md.outputs.path }}`
+            {% else %}
+            ❗ No SBOM diff report was generated.
+            This may mean:
+            - No vulnerabilities were introduced  
+            - SBOM generation failed  
+            - Diff exited early  
+            {% endif %}
 
-      - name: Fail if SBOM Scan failed
+
+      # ===========================
+      #      PASS / FAIL STATUS
+      # ===========================
+      - name: Fail if scan failed
         if: steps.sbom_scan.outcome == 'failure'
         run: |
           echo "❌ SBOM-TM found blocking issues."
@@ -68,3 +107,5 @@ jobs:
       - name: Success
         if: steps.sbom_scan.outcome == 'success'
         run: echo "✔ SBOM-TM scan succeeded!"
+
+
